@@ -2,6 +2,7 @@ from transformers import GPTNeoForCausalLM, GPT2Tokenizer
 from torch.utils.data import Dataset, DataLoader
 import torch
 from tqdm import tqdm
+import os
 
 class TextDataset(Dataset):
     def __init__(self, directory_path, tokenizer):
