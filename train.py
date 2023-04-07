@@ -25,7 +25,7 @@ model.to(device)
 print('Working...')
 # Set up the progress bar
 data_dir = 'data'
-data_files = [f for f in os.listdir(data_dir) if f.endswith('.txt')][:5000]
+data_files = [f for f in os.listdir(data_dir) if f.endswith('.txt')][:500]
 progress_bar = tqdm(data_files)
 print('Training...')
 # Fine-tune the model on each training chunk
@@ -49,6 +49,7 @@ for filename in progress_bar:
         outputs = model(input_ids, labels=labels)
         loss = outputs[0]
         loss.backward()
+
 
         optimizer.step()
         optimizer.zero_grad()
