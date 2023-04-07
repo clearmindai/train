@@ -1,12 +1,17 @@
+print('Importing os')
 import os
+print('Importing tqdm')
 from tqdm import tqdm
+print('Importing torch')
 import torch
+print('Importing transformers')
 from transformers import GPT2Tokenizer, GPT2LMHeadModel
-
+print('Starting tokenizer')
 # Set up the tokenizer and model
 tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+print('Starting model')
 model = GPT2LMHeadModel.from_pretrained('gpt2')
-
+print('Starting parameters')
 # Set up the training parameters
 optimizer = torch.optim.Adam(model.parameters(), lr=5e-5)
 if torch.backends.mps.is_available():
@@ -15,15 +20,17 @@ elif torch.cuda.is_available():
     device = torch.device('cuda')
 else:
     device = torch.device('cpu')
+print('Piping model')
 model.to(device)
-
+print('Working...')
 # Set up the progress bar
 data_dir = 'data'
-data_files = os.listdir(data_dir)
+data_files = [f for f in os.listdir(data_dir) if f.endswith('.txt')][:5000]
 progress_bar = tqdm(data_files)
-
+print('Training...')
 # Fine-tune the model on each training chunk
 model.train()
+print('Running...')
 for filename in progress_bar:
     file_path = os.path.join(data_dir, filename)
     with open(file_path, 'r', encoding='utf-8') as f:
