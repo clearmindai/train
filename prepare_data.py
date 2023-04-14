@@ -15,4 +15,4 @@ for i, conversation in enumerate(conversations):
                 user = 'prompter'
             else:
                 user = 'assistant'
-            f.write('<|' + user + '|>' + text + '<|endoftext|>')
+            f.write('<|startoftext|><|' + user + '|>' + text + '<|endoftext|>')

@@ -1,61 +1,66 @@
-print('Importing os')
-import os
-print('Importing tqdm')
-from tqdm import tqdm
-print('Importing torch')
+import pandas as pd
 import torch
-print('Importing transformers')
-from transformers import GPT2Tokenizer, GPT2LMHeadModel
-print('Starting tokenizer')
-# Set up the tokenizer and model
-tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-print('Starting model')
-model = GPT2LMHeadModel.from_pretrained('gpt2')
-print('Starting parameters')
-# Set up the training parameters
-optimizer = torch.optim.Adam(model.parameters(), lr=5e-5)
-if torch.backends.mps.is_available():
-    device = torch.device('mps')
-elif torch.cuda.is_available():
-    device = torch.device('cuda')
-else:
-    device = torch.device('cpu')
-print('Piping model')
-model.to(device)
-print('Working...')
-# Set up the progress bar
-data_dir = 'data'
-data_files = [f for f in os.listdir(data_dir) if f.endswith('.txt')][:500]
-progress_bar = tqdm(data_files)
-print('Training...')
-# Fine-tune the model on each training chunk
-model.train()
-print('Running...')
-for filename in progress_bar:
-    file_path = os.path.join(data_dir, filename)
-    with open(file_path, 'r', encoding='utf-8') as f:
-        chunk = f.read()
+from torch.utils.data import Dataset, random_split
+from transformers import GPT2Tokenizer, TrainingArguments, Trainer, GPTNeoForCausalLM
+from tqdm import tqdm
+import glob
 
-    # Split the training data into smaller chunks
-    max_length = model.config.n_positions
-    train_chunks = [chunk[i:i+max_length] for i in range(0, len(chunk), max_length)]
+torch.manual_seed(42)
+tokenizer = GPT2Tokenizer.from_pretrained("EleutherAI/gpt-neo-1.3B", bos_token='<|startoftext|>',
+                                          eos_token='<|endoftext|>', pad_token='<|pad|>')
+model = GPTNeoForCausalLM.from_pretrained("EleutherAI/gpt-neo-1.3B").to('mps')
+model.resize_token_embeddings(len(tokenizer))
+#files = pd.read_csv('data.csv')['description']
+print('Hello World')
 
-    for i, chunk in enumerate(train_chunks):
-        encodings = tokenizer.encode_plus(chunk, return_tensors='pt', max_length=max_length)
-        input_ids = encodings['input_ids'].to(device)
-        labels = input_ids.clone().detach()
-        labels[labels == tokenizer.pad_token_id] = -100
+path = 'data/*.txt'  # specify path to all .txt files in the data directory
+files = glob.glob(path)[:500]  # get a list of file paths
 
-        outputs = model(input_ids, labels=labels)
-        loss = outputs[0]
-        loss.backward()
+contents = []  # initialize an empty list to store contents
+
+for file in files:
+    with open(file, 'r') as f:
+        file_content = f.read()
+        while len(file_content) > 2048:
+            contents.append(file_content[:2048])
+            file_content = file_content[2048:]
+        contents.append(file_content)
 
 
-        optimizer.step()
-        optimizer.zero_grad()
+#max_length = max([len(tokenizer.encode(description)) for description in descriptions])
+max_length = 2048
+print('Hello World 1')
 
-        # Update the progress bar
-        progress_bar.set_description(f"Processed file {filename}. Loss: {loss.item()}")
+class TextDataset(Dataset):
+    def __init__(self, txt_list, tokenizer, max_length):
+        self.input_ids = []
+        self.attn_masks = []
+        self.labels = []
+        for txt in txt_list:
+            encodings_dict = tokenizer('<|startoftext|>' + txt + '<|endoftext|>', truncation=True, max_length=max_length, padding="max_length")
+            self.input_ids.append(torch.tensor(encodings_dict['input_ids']))
+            self.attn_masks.append(torch.tensor(encodings_dict['attention_mask']))
 
-# Save the fine-tuned model to disk
-model.save_pretrained('finetuned_gpt2')
+    def __len__(self):
+        return len(self.input_ids)
+
+    def __getitem__(self, idx):
+        return self.input_ids[idx], self.attn_masks[idx]
+
+
+dataset = TextDataset(contents, tokenizer, max_length=max_length)
+train_size = int(0.9 * len(dataset))
+train_dataset, val_dataset = random_split(dataset, [train_size, len(dataset) - train_size])
+training_args = TrainingArguments(output_dir='./results', num_train_epochs=5, logging_steps=5000, save_steps=5000,
+                                  per_device_train_batch_size=2, per_device_eval_batch_size=2,
+                                  warmup_steps=100, weight_decay=0.01, logging_dir='./logs')
+print("Training")
+Trainer(model=model, args=training_args, train_dataset=train_dataset,
+        eval_dataset=val_dataset, data_collator=lambda data: {'input_ids': torch.stack([f[0] for f in data]), 'attention_mask': torch.stack([f[1] for f in data]), 'labels': torch.stack([f[0] for f in data])}).train()
+
+print('Done')
+generated = tokenizer("<|startoftext|> ", return_tensors="pt").input_ids.to('mps')
+sample_outputs = model.generate(generated, do_sample=True, top_k=50, 
+                                max_length=300, top_p=0.95, temperature=1.9, num_return_sequences=20)
+for i, sample_output in enumerate(sample_outputs):
+    print("{}: {}".format(i, tokenizer.decode(sample_output, skip_special_tokens=True)))
