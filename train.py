@@ -22,7 +22,7 @@ model = accelerator.prepare(
 )
 
 path = 'data/*.txt'  # specify path to all .txt files in the data directory
-files = glob.glob(path)[:5]  # get a list of file paths
+files = glob.glob(path)[:2]  # get a list of file paths
 
 contents = []  # initialize an empty list to store contents
 
@@ -74,8 +74,16 @@ Trainer(model=model, args=training_args, train_dataset=train_dataset,
         eval_dataset=val_dataset, data_collator=lambda data: {'input_ids': torch.stack([f[0] for f in data]), 'attention_mask': torch.stack([f[1] for f in data]).to(torch.device('mps')), 'labels': torch.stack([f[0] for f in data]).to(torch.device('mps'))}).train()
 
 print('Done')
-generated = tokenizer("<|startoftext|> ", return_tensors="pt").input_ids.to('mps')
-sample_outputs = model.generate(generated, do_sample=True, top_k=50, 
-                                max_length=300, top_p=0.95, temperature=1.9, num_return_sequences=20)
-for i, sample_output in enumerate(sample_outputs):
-    print("{}: {}".format(i, tokenizer.decode(sample_output, skip_special_tokens=True)))
+#generated = tokenizer("<|startoftext|> ", return_tensors="pt").input_ids.to('mps')
+#sample_outputs = model.generate(generated, do_sample=True, top_k=50, 
+#                                max_length=300, top_p=0.95, temperature=1.9, num_return_sequences=20)
+#for i, sample_output in enumerate(sample_outputs):
+#    print("{}: {}".format(i, tokenizer.decode(sample_output, skip_special_tokens=True)))
+## specify the directory where you want to save the model
+model_directory = './saved_model/'
+
+# save the trained model to the specified directory
+model.save_pretrained(model_directory)
+
+# save the tokenizer to the same directory
+tokenizer.save_pretrained(model_directory)
