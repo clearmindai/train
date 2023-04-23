@@ -22,7 +22,7 @@ model = accelerator.prepare(
 )
 
 path = 'data/*.txt'  # specify path to all .txt files in the data directory
-files = glob.glob(path)[:2]  # get a list of file paths
+files = glob.glob(path)[:500]  # get a list of file paths
 
 contents = []  # initialize an empty list to store contents
 
