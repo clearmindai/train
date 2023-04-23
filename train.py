@@ -1,21 +1,28 @@
+print('1. Importing Modules')
+
 import pandas as pd
 import torch
 from torch.utils.data import Dataset, random_split
 from transformers import GPT2Tokenizer, TrainingArguments, Trainer, GPTNeoForCausalLM
 #from transformers import GPTNeoXTokenizer, TrainingArguments, Trainer, GPTNeoForCausalLM
 import glob
-
+from accelerate import Accelerator
+accelerator = Accelerator()
 torch.manual_seed(42)
 tokenizer = GPT2Tokenizer.from_pretrained("EleutherAI/gpt-neo-125m", bos_token='<|startoftext|>',
 #tokenizer = GPTNeoXTokenizer.from_pretrained("EleutherAI/pythia-410m", bos_token='<|startoftext|>',
                                           eos_token='<|endoftext|>', pad_token='<|pad|>')
-model = GPTNeoForCausalLM.from_pretrained("EleutherAI/gpt-neo-125m")
+model = GPTNeoForCausalLM.from_pretrained("EleutherAI/gpt-neo-125m").to('mps')
 model.resize_token_embeddings(len(tokenizer))
 #files = pd.read_csv('data.csv')['description']
-print('Hello World')
+print('Processing files')
+
+model = accelerator.prepare(
+     model
+)
 
 path = 'data/*.txt'  # specify path to all .txt files in the data directory
-files = glob.glob(path)[:50]  # get a list of file paths
+files = glob.glob(path)[:5]  # get a list of file paths
 
 contents = []  # initialize an empty list to store contents
 
@@ -30,7 +37,7 @@ for file in files:
 
 #max_length = max([len(tokenizer.encode(description)) for description in descriptions])
 max_length = 2048
-print('Hello World 1')
+print('Processing dataset and starting trainer')
 
 class TextDataset(Dataset):
     def __init__(self, txt_list, tokenizer, max_length):
@@ -48,13 +55,22 @@ class TextDataset(Dataset):
     def __getitem__(self, idx):
         return self.input_ids[idx], self.attn_masks[idx]
 
+class TrainingArgumentsWithMPSSupport(TrainingArguments):
 
+    @property
+    def device(self) -> torch.device:
+        if torch.cuda.is_available():
+            return torch.device("cuda")
+        elif torch.backends.mps.is_available():
+            return torch.device("mps")
+        else:
+            return torch.device("cpu")
 dataset = TextDataset(contents, tokenizer, max_length=max_length)
 train_size = int(0.9 * len(dataset))
 train_dataset, val_dataset = random_split(dataset, [train_size, len(dataset) - train_size])
-training_args = TrainingArguments(output_dir='./results', num_train_epochs=5, logging_steps=5000, save_steps=5000, per_device_train_batch_size=2, per_device_eval_batch_size=2, warmup_steps=10, weight_decay=0.01, logging_dir='./logs')
+training_args = TrainingArgumentsWithMPSSupport(output_dir='./results', num_train_epochs=5, logging_steps=5000, save_steps=5000, per_device_train_batch_size=2, per_device_eval_batch_size=2, warmup_steps=10, weight_decay=0.01, logging_dir='./logs')
 print("Training")
-Trainer(model=model.to(torch.device('mps')), args=training_args, train_dataset=train_dataset,
+Trainer(model=model, args=training_args, train_dataset=train_dataset,
         eval_dataset=val_dataset, data_collator=lambda data: {'input_ids': torch.stack([f[0] for f in data]), 'attention_mask': torch.stack([f[1] for f in data]).to(torch.device('mps')), 'labels': torch.stack([f[0] for f in data]).to(torch.device('mps'))}).train()
 
 print('Done')
